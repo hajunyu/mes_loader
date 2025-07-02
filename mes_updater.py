@@ -13,8 +13,8 @@ class UpdateManager:
         self.config_file = "mes_config.json"
         
         # GitHub 저장소 사용자명과 저장소 이름을 본인 것으로 수정
-        self.github_username = "your-username"  # 예: yhj1129
-        self.github_repo = "mes_downloader"
+        self.github_username = "hajunyu"  # 예: yhj1129
+        self.github_repo = "mes_loader"
         
         # GitHub API URL
         self.github_url = f"https://api.github.com/repos/{self.github_username}/{self.github_repo}/releases/latest"
