@@ -21,7 +21,6 @@ from mes_uploader import FileUploader  # 업로더 클래스 import
 from mes_common import initialize_driver, login_and_navigate
 from mes_unbalance import UnbalanceLoader  # 언발런스 로더 import 추가
 from mes_updater import UpdateManager, UpdateDialog  # 업데이터 import 추가
-
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")  # 기본 제공되는 테마 사용
 
@@ -40,23 +39,9 @@ class MESDownloader(ctk.CTk):
         self.config_file = "mes_config.json"
         self.load_config()  # 설정 로드
 
-        # 업데이트 매니저 초기화
-        self.update_manager = UpdateManager()
-        self.check_for_updates()  # 업데이트 확인
-
         # 전체 UI 생성
         self.create_main_frame()
 
-    def check_for_updates(self):
-        """업데이트 확인"""
-        try:
-            has_update, latest_version, release_notes = self.update_manager.check_for_updates()
-            if has_update:
-                dialog = UpdateDialog(self, self.update_manager.current_version, latest_version, release_notes)
-                if dialog.update_choice:
-                    self.update_manager.download_update(latest_version)
-        except Exception as e:
-            print(f"업데이트 확인 중 오류: {str(e)}")
 
     def load_config(self):
         """설정 파일 로드"""
@@ -540,10 +525,23 @@ class MESDownloader(ctk.CTk):
         ctk.CTkButton(path_frame, text="찾아보기", width=60,
                      command=self.select_editor_path).pack(side="right", padx=5)
 
+        # 저장 버튼과 업데이트 확인 버튼을 위한 프레임
+        button_frame = ctk.CTkFrame(settings_window, fg_color="transparent")
+        button_frame.pack(pady=5)
+
         # 저장 버튼
-        save_btn = ctk.CTkButton(settings_window, text="저장", command=lambda: self.save_settings(settings_window),
-                                height=40, font=("맑은 고딕", 14, "bold"))
-        save_btn.pack(pady=5)
+        save_btn = ctk.CTkButton(button_frame, text="저장", 
+                                command=lambda: self.save_settings(settings_window),
+                                height=40, width=150, 
+                                font=("맑은 고딕", 14, "bold"))
+        save_btn.pack(side="left", padx=5)
+
+        # 업데이트 확인 버튼
+        update_check_btn = ctk.CTkButton(button_frame, text="업데이트 확인",
+                                       command=self.check_update_manually,
+                                       height=40, width=150,
+                                       font=("맑은 고딕", 14, "bold"))
+        update_check_btn.pack(side="left", padx=5)
         
         # 만든이 정보 프레임
         info_frame = ctk.CTkFrame(settings_window)
@@ -1084,6 +1082,17 @@ class MESDownloader(ctk.CTk):
         from mes_split import SplitMode
         app = SplitMode(self)
         app.grab_set()
+
+    def check_update_manually(self):
+        """업데이트 확인 수동 실행"""
+        try:
+            updater_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mes_updater.py")
+            if os.path.exists(updater_path):
+                os.system(f'python "{updater_path}"')
+            else:
+                messagebox.showerror("오류", "업데이트 모듈을 찾을 수 없습니다.")
+        except Exception as e:
+            messagebox.showerror("오류", f"업데이트 모듈 실행 중 오류가 발생했습니다.\n\n{str(e)}")
 
 if __name__ == "__main__":
     app = MESDownloader()
