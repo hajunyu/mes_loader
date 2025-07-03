@@ -558,7 +558,7 @@ class MESDownloader(ctk.CTk):
         creator_label.pack(pady=(5,0))
         
         version_label = ctk.CTkLabel(info_frame,
-                                   text="충주 제어기 생산팀 / Version 2.1.0",
+                                   text="충주 제어기 생산팀 / Version 2.1.3",
                                    font=("맑은 고딕", 12))
         version_label.pack()
         

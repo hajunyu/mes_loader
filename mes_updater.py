@@ -12,7 +12,7 @@ import urllib3
 
 class UpdateManager:
     def __init__(self):
-        self.current_version = "2.1.2"  # 현재 버전
+        self.current_version = "2.1.3"  # 현재 버전
         self.github_user = "hajunyu"    # GitHub 사용자 이름
         self.github_repo = "mes_loader" # GitHub 저장소 이름
         self.config_file = "mes_config.json"
