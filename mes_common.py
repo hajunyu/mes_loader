@@ -24,19 +24,27 @@ def initialize_driver(show_browser=True):
     options.add_argument('--disable-popup-blocking')
     options.add_argument('--blink-settings=imagesEnabled=true')  # 이미지 활성화 (MES 사이트 호환성)
     
-    # 네트워크 최적화
+    # 네트워크 최적화 및 GCM 오류 방지
     options.add_argument('--disable-features=OptimizationHints')
     options.add_argument('--enable-features=NetworkServiceInProcess')
     options.add_argument('--remote-allow-origins=*')
+    options.add_argument('--disable-background-networking')  # 백그라운드 네트워킹 비활성화 (GCM 오류 방지)
+    options.add_argument('--disable-sync')  # Chrome 동기화 비활성화
     
     # 로깅 및 기타 옵션
-    options.add_experimental_option('excludeSwitches', ['enable-logging'])
+    options.add_experimental_option('excludeSwitches', ['enable-logging', 'enable-automation'])
     options.add_experimental_option('detach', True)
+    options.add_experimental_option('useAutomationExtension', False)
     
     try:
         driver = webdriver.Chrome(options=options)
         driver.set_page_load_timeout(30)
         driver.set_script_timeout(30)
+        
+        # 브라우저가 표시되는 경우 줌 레벨을 25%로 설정 (Ctrl + 마우스 휠 축소 효과)
+        if show_browser:
+            driver.execute_script("document.body.style.zoom='0.25'")
+        
         return driver
     except Exception as e:
         print(f"Chrome 드라이버 초기화 실패: {str(e)}")
@@ -107,7 +115,7 @@ def login_and_navigate(driver, user_id, password, log_callback=print):
                 driver.execute_script("arguments[0].scrollIntoView(true); arguments[0].click();", wct_link)
                 time.sleep(1)
                 
-                # 새로 열린 창으로 전환 (최대 10초 대기)
+                # 새로 열린 창으로 전환 (최대 2초 대기)
                 try:
                     WebDriverWait(driver, 4).until(lambda d: len(d.window_handles) > 1)
                     driver.switch_to.window(driver.window_handles[-1])

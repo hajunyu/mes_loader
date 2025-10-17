@@ -12,6 +12,9 @@ import pyautogui
 from mes_common import initialize_driver, login_and_navigate
 from datetime import datetime
 from selenium.common.exceptions import TimeoutException
+import pandas as pd
+import openpyxl
+from pathlib import Path
 
 class FileUploader(ctk.CTkToplevel):
     def __init__(self, parent):
@@ -135,6 +138,164 @@ class FileUploader(ctk.CTkToplevel):
         # 성공적으로 업로드된 파일들을 추적하기 위한 리스트 추가
         self.successful_uploads = []
     
+    def check_excel_security(self, file_path):
+        """개별 엑셀 파일의 보안 상태를 확인"""
+        try:
+            file_info = {
+                'file_path': str(file_path),
+                'file_name': os.path.basename(file_path),
+                'file_size': os.path.getsize(file_path),
+                'modified_time': datetime.fromtimestamp(os.path.getmtime(file_path)),
+                'security_status': 'Unknown',
+                'is_password_protected': False,
+                'has_macros': False,
+                'has_vba_code': False,
+                'is_read_only': False,
+                'protection_level': 'None',
+                'error_message': None
+            }
+            
+            # 파일 확장자 확인
+            if not file_path.lower().endswith(('.xlsx', '.xls', '.xlsm', '.xlsb')):
+                file_info['error_message'] = '엑셀 파일이 아닙니다.'
+                return file_info
+            
+            # openpyxl을 사용한 보안 검사
+            try:
+                workbook = openpyxl.load_workbook(file_path, read_only=True)
+                
+                # 워크북 보호 상태 확인
+                if hasattr(workbook, 'security') and workbook.security:
+                    file_info['protection_level'] = 'Workbook Protected'
+                
+                # 워크시트 보호 상태 확인
+                protected_sheets = []
+                for sheet_name in workbook.sheetnames:
+                    sheet = workbook[sheet_name]
+                    if sheet.protection.sheet:
+                        protected_sheets.append(sheet_name)
+                
+                if protected_sheets:
+                    file_info['protection_level'] = f'Sheet Protected: {", ".join(protected_sheets)}'
+                
+                # 매크로 확인 (xlsm 파일)
+                if file_path.lower().endswith('.xlsm'):
+                    file_info['has_macros'] = True
+                
+                workbook.close()
+                
+            except Exception as e:
+                file_info['error_message'] = f'openpyxl 오류: {str(e)}'
+            
+            # pandas를 사용한 추가 검사
+            try:
+                # 파일 읽기 시도 (여러 엔진으로 시도)
+                engines = ['openpyxl', 'xlrd']
+                df = None
+                
+                for engine in engines:
+                    try:
+                        if file_path.lower().endswith(('.xlsx', '.xlsm', '.xlsb')):
+                            df = pd.read_excel(file_path, sheet_name=None, engine='openpyxl')
+                        else:
+                            df = pd.read_excel(file_path, sheet_name=None, engine='xlrd')
+                        break
+                    except Exception as engine_error:
+                        if engine == engines[-1]:  # 마지막 엔진까지 실패
+                            raise engine_error
+                        continue
+                
+                if df is not None:
+                    file_info['sheet_count'] = len(df)
+                    file_info['security_status'] = 'Accessible'
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                if 'password' in error_msg or 'encrypted' in error_msg:
+                    file_info['is_password_protected'] = True
+                    file_info['security_status'] = 'Password Protected'
+                elif 'permission' in error_msg or 'read-only' in error_msg:
+                    file_info['is_read_only'] = True
+                    file_info['security_status'] = 'Read Only'
+                elif 'not a zip file' in error_msg:
+                    # DRM 보호된 파일 또는 손상된 파일일 수 있음
+                    file_info['security_status'] = 'DRM Protected'
+                    file_info['error_message'] = 'DRM 보안 프로그램으로 보호된 파일이거나 파일이 손상되었습니다.'
+                else:
+                    file_info['security_status'] = 'Error'
+                    file_info['error_message'] = str(e)
+            
+            # 보안 상태 분류
+            if file_info['is_password_protected']:
+                file_info['security_level'] = 'High'
+            elif file_info['has_macros'] or file_info['protection_level'] != 'None':
+                file_info['security_level'] = 'Medium'
+            elif file_info['is_read_only']:
+                file_info['security_level'] = 'Low'
+            elif file_info['security_status'] == 'DRM Protected':
+                file_info['security_level'] = 'DRM Protected'
+            elif file_info['security_status'] == 'File Corrupted':
+                file_info['security_level'] = 'Corrupted'
+            elif file_info['security_status'] == 'Error':
+                file_info['security_level'] = 'Error'
+            else:
+                file_info['security_level'] = 'None'
+            
+            return file_info
+            
+        except Exception as e:
+            return {
+                'file_path': str(file_path),
+                'file_name': os.path.basename(file_path),
+                'security_status': 'Error',
+                'error_message': f'파일 처리 오류: {str(e)}',
+                'security_level': 'Unknown'
+            }
+    
+    def check_files_security(self):
+        """선택된 모든 파일의 보안 상태를 검사"""
+        if not self.files:
+            return True, []
+        
+        self.log_step("파일 보안 상태 검사 시작...")
+        self.status_text.set("파일 보안 상태 검사 중...")
+        
+        drm_protected_files = []
+        total_files = len(self.files)
+        
+        for index, file_path in enumerate(self.files, 1):
+            self.log_step(f"보안 검사 중... [{index}/{total_files}] {os.path.basename(file_path)}")
+            
+            try:
+                security_info = self.check_excel_security(file_path)
+                
+                if security_info['security_level'] == 'DRM Protected':
+                    drm_protected_files.append({
+                        'file_name': security_info['file_name'],
+                        'file_path': security_info['file_path'],
+                        'error_message': security_info.get('error_message', 'DRM 보호됨')
+                    })
+                    self.log_step(f"⚠️ DRM 보호 파일 발견: {security_info['file_name']}")
+                elif security_info['security_level'] == 'None':
+                    self.log_step(f"✅ 보안 해제됨: {security_info['file_name']}")
+                else:
+                    self.log_step(f"⚠️ 보안 설정됨 ({security_info['security_level']}): {security_info['file_name']}")
+                    
+            except Exception as e:
+                self.log_step(f"❌ 보안 검사 실패: {os.path.basename(file_path)} - {str(e)}")
+                drm_protected_files.append({
+                    'file_name': os.path.basename(file_path),
+                    'file_path': file_path,
+                    'error_message': f'보안 검사 실패: {str(e)}'
+                })
+        
+        if drm_protected_files:
+            self.log_step(f"❌ DRM 보호 파일 {len(drm_protected_files)}개 발견")
+            return False, drm_protected_files
+        else:
+            self.log_step("✅ 모든 파일 보안 검사 완료 - 업로드 가능")
+            return True, []
+    
     def log_message(self, message):
         """상태 메시지를 업데이트하고 로그에 추가"""
         self.status_text.set(message)
@@ -211,6 +372,24 @@ class FileUploader(ctk.CTkToplevel):
             self.log_step("오류: 업로드할 파일이 없습니다.")
             self.status_text.set("업로드할 파일이 없습니다.")
             return
+        
+        # 파일 보안 상태 검사
+        security_check_passed, drm_protected_files = self.check_files_security()
+        
+        if not security_check_passed:
+            # DRM 보호 파일이 있는 경우 메시지 표시
+            import tkinter.messagebox as messagebox
+            
+            file_list = "\n".join([f"- {file['file_name']}" for file in drm_protected_files])
+            error_message = f"다음 파일들이 보안으로 보호되어 있습니다.\n\n{file_list}\n\n보안을 해제한 후 다시 시도해주세요."
+            
+            messagebox.showerror("보안 오류", error_message)
+            self.log_step("업로드 중지: DRM 보호 파일 발견")
+            self.status_text.set("DRM 보호 파일 발견 - 보안 해제 후 다시 시도하세요")
+            return
+        
+        self.log_step("업로드를 시작합니다.")
+        self.status_text.set("업로드 준비 중...")
             
         # 성공적으로 업로드된 파일 리스트 초기화
         self.successful_uploads = []

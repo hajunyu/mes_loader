@@ -11,75 +11,61 @@ from datetime import datetime
 import urllib3
 
 class UpdateManager:
+    # 클래스 변수로 변경
+    current_version = "2.1.3"
+
     def __init__(self):
-        self.current_version = "2.1.3"  # 현재 버전
+        """업데이트 매니저 초기화"""
+        # 인스턴스 변수에서 클래스 변수로 이동했으므로 제거
+        # self.current_version = "2.1.3"  # 현재 버전
         self.github_user = "hajunyu"    # GitHub 사용자 이름
         self.github_repo = "mes_loader" # GitHub 저장소 이름
         self.config_file = "mes_config.json"
+        # SSL 경고 메시지 비활성화
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        self.mes_modules = [
+            'mes_downloader.py',
+            'mes_common.py',
+            'mes_unbalance.py',
+            'mes_updater.py',
+            'mes_register.py',
+            'mes_split.py',
+            'mes_uploader.py' ,
+            'mes_DTHistory.py'
+        ]
+        self.current_dir = os.path.dirname(os.path.abspath(__file__))
         
     def check_for_updates(self):
         """GitHub에서 최신 버전 확인"""
         try:
-            # GitHub API를 통해 최신 릴리즈 정보 가져오기
-            api_url = f"https://api.github.com/repos/{self.github_user}/{self.github_repo}/releases/latest"
+            # GitHub API를 통해 version.txt 파일 내용 가져오기
+            version_url = f"https://raw.githubusercontent.com/{self.github_user}/{self.github_repo}/main/version.txt"
             print("\n=== GitHub 업데이트 확인 ===")
-            print(f"API URL: {api_url}")
+            print(f"버전 확인 URL: {version_url}")
             print(f"현재 버전: {self.current_version}")
             
             # API 요청 헤더 추가
             headers = {
-                'Accept': 'application/vnd.github.v3+json',
+                'Accept': 'application/vnd.github.v3.raw',
                 'User-Agent': 'mes_updater'
             }
-            print("API 요청 시작...")
             
             # SSL 검증을 비활성화하고 요청
-            response = requests.get(api_url, headers=headers, timeout=10, verify=False)
-            
-            # SSL 경고 메시지 무시
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            
-            print(f"\nAPI 응답 상태 코드: {response.status_code}")
-            print(f"API 응답 헤더:\n{json.dumps(dict(response.headers), indent=2)}")
+            response = requests.get(version_url, headers=headers, verify=False)
             
             if response.status_code == 200:
-                release_info = response.json()
-                print(f"\nAPI 응답 데이터:\n{json.dumps(release_info, indent=2, ensure_ascii=False)}")
-                
-                if "tag_name" not in release_info:
-                    print("\n오류: 릴리스 정보에 tag_name이 없습니다")
-                    return False, self.current_version, ""
-                
-                latest_version = release_info["tag_name"].replace("v", "").strip()
-                print(f"\n최신 버전: {latest_version}")
+                latest_version = response.text.strip()
+                print(f"최신 버전: {latest_version}")
                 
                 # 버전 비교
-                comparison = self._compare_versions(latest_version, self.current_version)
-                print(f"버전 비교 결과: {comparison} (양수: 업데이트 필요, 0: 최신, 음수: 현재가 더 높은 버전)")
-                
-                if comparison > 0:
-                    return True, latest_version, release_info.get("body", "릴리스 노트가 없습니다.")
+                if self._compare_versions(latest_version, self.current_version) > 0:
+                    return True, latest_version, "새로운 버전이 있습니다."
                 
                 return False, latest_version, ""
-            elif response.status_code == 404:
-                print("\n오류: 저장소를 찾을 수 없거나 릴리스가 없습니다")
-                print(f"응답 내용:\n{response.text}")
-                return False, self.current_version, ""
-            elif response.status_code == 403:
-                print("\n오류: API 사용량 제한 초과 또는 접근이 거부되었습니다")
-                print(f"응답 내용:\n{response.text}")
-                return False, self.current_version, ""
             else:
-                print(f"\n오류: 예상치 못한 응답 코드 {response.status_code}")
-                print(f"응답 내용:\n{response.text}")
-                raise Exception(f"GitHub API 응답 오류: {response.status_code}")
+                print(f"\n오류: 버전 정보를 가져올 수 없습니다. (상태 코드: {response.status_code})")
+                return False, self.current_version, ""
             
-        except requests.exceptions.Timeout:
-            print("\n오류: GitHub API 요청 시간 초과")
-            return False, self.current_version, ""
-        except requests.exceptions.RequestException as e:
-            print(f"\n오류: 네트워크 문제 발생\n{str(e)}")
-            return False, self.current_version, ""
         except Exception as e:
             print(f"\n오류: 업데이트 확인 중 예외 발생\n{str(e)}")
             return False, self.current_version, ""
@@ -103,91 +89,81 @@ class UpdateManager:
     def download_update(self, version):
         """업데이트 다운로드 및 적용"""
         try:
-            # GitHub API를 통해 릴리즈 정보 가져오기
-            api_url = f"https://api.github.com/repos/{self.github_user}/{self.github_repo}/releases/latest"
+            # GitHub에서 직접 exe 파일 다운로드
+            exe_name = "MES_WEB_REPORT.exe"
+            download_url = f"https://github.com/{self.github_user}/{self.github_repo}/blob/main/{exe_name}?raw=true"
+            print(f"다운로드 URL: {download_url}")
             
-            # API 요청 헤더 추가
-            headers = {
-                'Accept': 'application/vnd.github.v3+json',
-                'User-Agent': 'mes_updater'
-            }
+            # 현재 실행 중인 exe 파일명 확인
+            current_exe = sys.executable if getattr(sys, 'frozen', False) else None
+            if not current_exe or not os.path.exists(current_exe):
+                raise Exception("현재 실행 중인 exe 파일을 찾을 수 없습니다.")
             
-            # SSL 검증 비활성화하여 요청
-            response = requests.get(api_url, headers=headers, verify=False)
+            print(f"현재 실행 중인 exe 파일: {current_exe}")
             
-            if response.status_code == 200:
-                release_info = response.json()
-                
-                # assets에서 다운로드 URL 찾기
-                if 'assets' in release_info and release_info['assets']:
-                    # 첫 번째 asset의 다운로드 URL 사용
-                    zip_url = release_info['assets'][0]['browser_download_url']
-                else:
-                    # assets가 없으면 소스코드 ZIP 사용
-                    zip_url = release_info["zipball_url"]
-                    print("경고: Release assets를 찾을 수 없어 소스코드 ZIP을 사용합니다.")
-                
-                print(f"다운로드 URL: {zip_url}")
-                
-                # 임시 디렉토리 생성
-                temp_dir = "temp_update"
-                if os.path.exists(temp_dir):
-                    shutil.rmtree(temp_dir)
-                os.makedirs(temp_dir)
-                
-                try:
-                    # zip 파일 다운로드
-                    print("업데이트 파일 다운로드 중...")
-                    # SSL 검증 비활성화하여 ZIP 파일 다운로드
-                    response = requests.get(zip_url, verify=False)
-                    
-                    if response.status_code == 200:
-                        # ZIP 파일 압축 해제
-                        print("압축 파일 해제 중...")
-                        zip_content = zipfile.ZipFile(io.BytesIO(response.content))
-                        zip_content.extractall(temp_dir)
-                        
-                        # 압축 해제된 첫 번째 디렉토리 찾기 (GitHub ZIP의 경우 하나의 루트 디렉토리 포함)
-                        extracted_dir = os.path.join(temp_dir, os.listdir(temp_dir)[0])
-                        
-                        # 현재 설정 파일 백업
-                        if os.path.exists(self.config_file):
-                            with open(self.config_file, "r", encoding="utf-8") as f:
-                                current_config = json.load(f)
-                        
-                        # 파일 업데이트
-                        print("파일 업데이트 중...")
-                        current_dir = os.path.dirname(os.path.abspath(__file__))
-                        for root, dirs, files in os.walk(extracted_dir):
-                            for file in files:
-                                if file.endswith('.py'):  # Python 파일만 업데이트
-                                    src_file = os.path.join(root, file)
-                                    dst_file = os.path.join(current_dir, file)
-                                    shutil.copy2(src_file, dst_file)
-                        
-                        # 설정 파일 복원
-                        if os.path.exists(self.config_file):
-                            with open(self.config_file, "w", encoding="utf-8") as f:
-                                json.dump(current_config, f, ensure_ascii=False, indent=4)
-                        
-                        # 임시 파일 정리
-                        shutil.rmtree(temp_dir)
-                        
-                        messagebox.showinfo("업데이트 완료", 
-                                          f"버전 {version}으로 업데이트가 완료되었습니다.\n프로그램을 다시 시작해주세요.")
-                        sys.exit(0)  # 프로그램 종료
-                
-                except Exception as e:
-                    print(f"업데이트 적용 중 오류: {str(e)}")
-                    if os.path.exists(temp_dir):
-                        shutil.rmtree(temp_dir)
-                    raise e
+            # 새 버전 다운로드
+            print("새 버전 다운로드 중...")
+            response = requests.get(download_url, verify=False, stream=True)
             
-            return False
+            if response.status_code != 200:
+                raise Exception(f"다운로드 실패 (상태 코드: {response.status_code})")
+            
+            # 파일 크기 확인
+            total_size = int(response.headers.get('content-length', 0))
+            print(f"다운로드 크기: {total_size:,} bytes")
+            
+            if total_size < 1000000:  # 1MB 미만이면 의심스러운 파일
+                raise Exception("다운로드된 파일이 너무 작습니다. 올바른 exe 파일이 아닐 수 있습니다.")
+            
+            # 임시 파일로 다운로드 (버전 번호 포함)
+            file_name, file_ext = os.path.splitext(current_exe)
+            temp_exe = f"{file_name}_v{version}{file_ext}"
+            try:
+                with open(temp_exe, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                print("다운로드 완료")
+                
+                # 파일이 실제로 존재하는지 확인
+                if not os.path.exists(temp_exe):
+                    raise Exception("다운로드된 파일이 없습니다.")
+                
+                # 파일 크기 확인
+                if os.path.getsize(temp_exe) != total_size:
+                    raise Exception("다운로드된 파일이 손상되었습니다.")
+                
+                # 현재 파일 백업
+                backup_exe = current_exe + '.bak'
+                shutil.copy2(current_exe, backup_exe)
+                print(f"현재 버전 백업 완료: {backup_exe}")
+                
+                # 배치 파일 생성
+                update_bat = os.path.join(os.path.dirname(current_exe), 'update.bat')
+                with open(update_bat, 'w', encoding='utf-8') as bat:
+                    bat.write('@echo off\n')
+                    bat.write('timeout /t 1 /nobreak >nul\n')
+                    bat.write(f'move /y "{temp_exe}" "{current_exe}"\n')
+                    bat.write(f'del "{backup_exe}"\n')
+                    bat.write('del "%~f0"\n')
+                    bat.write(f'start "" "{current_exe}"\n')
+                
+                print("업데이트 준비 완료")
+                os.startfile(update_bat)
+                print("프로그램을 종료합니다...")
+                sys.exit(0)  # 프로그램 즉시 종료
+                return True
+                
+            except Exception as e:
+                print(f"파일 처리 중 오류: {e}")
+                if os.path.exists(temp_exe):
+                    os.remove(temp_exe)
+                raise
             
         except Exception as e:
-            print(f"업데이트 다운로드 중 오류: {str(e)}")
-            messagebox.showerror("업데이트 오류", f"업데이트 중 오류가 발생했습니다:\n{str(e)}")
+            error_msg = str(e)
+            print(f"업데이트 실패: {error_msg}")
+            messagebox.showerror("업데이트 오류", error_msg)
             return False
 
 class UpdateDialog(ctk.CTkToplevel):
@@ -239,34 +215,90 @@ class UpdaterApp(ctk.CTk):
         super().__init__()
         
         self.title("MES 업데이트")
-        self.geometry("300x150")
+        self.geometry("400x250")
         
         # 업데이트 매니저 초기화
         self.update_manager = UpdateManager()
         
-        # 업데이트 확인 시작
-        self.check_for_updates()
+        # UI 구성
+        self.create_widgets()
+    
+    def create_widgets(self):
+        # 현재 버전 표시
+        version_frame = ctk.CTkFrame(self)
+        version_frame.pack(pady=20, padx=20, fill="x")
+        
+        version_label = ctk.CTkLabel(version_frame, 
+                                   text=f"현재 버전: {self.update_manager.current_version}",
+                                   font=("Arial", 14))
+        version_label.pack(pady=10)
+        
+        # 업데이트 확인 버튼
+        check_button = ctk.CTkButton(self, 
+                                   text="업데이트 확인",
+                                   font=("Arial", 12),
+                                   width=200,
+                                   height=40,
+                                   command=self.check_for_updates)
+        check_button.pack(pady=20)
+        
+        # 상태 메시지 표시 (2줄로 표시)
+        self.status_label = ctk.CTkLabel(self, 
+                                       text="업데이트 확인을 눌러주세요.",
+                                       font=("Arial", 12),
+                                       wraplength=350)
+        self.status_label.pack(pady=10)
+        
+        # 상세 상태 메시지
+        self.detail_label = ctk.CTkLabel(self,
+                                       text="",
+                                       font=("Arial", 10),
+                                       text_color="gray",
+                                       wraplength=350)
+        self.detail_label.pack(pady=5)
+    
+    def update_status(self, status, detail=""):
+        self.status_label.configure(text=status)
+        self.detail_label.configure(text=detail)
+        self.update()  # UI 즉시 업데이트
     
     def check_for_updates(self):
         try:
+            self.update_status("GitHub에서 업데이트 확인 중...")
             has_update, latest_version, release_notes = self.update_manager.check_for_updates()
             
             if has_update:
-                dialog = UpdateDialog(self, self.update_manager.current_version, latest_version, release_notes)
-                if dialog.update_choice:
-                    self.update_manager.download_update(latest_version)
-                self.quit()
+                self.update_status(
+                    f"새 버전 {latest_version}이 있습니다.",
+                    f"현재 버전: {self.update_manager.current_version}"
+                )
+                response = messagebox.askyesno("업데이트 확인", 
+                                             f"새로운 버전 {latest_version}이 있습니다.\n"
+                                             "지금 업데이트하시겠습니까?")
+                if response:
+                    self.update_status("업데이트 파일 다운로드 중...", "잠시만 기다려주세요.")
+                    if self.update_manager.download_update(latest_version):
+                        self.update_status("업데이트 완료!", "프로그램이 곧 재시작됩니다.")
+                        self.after(2000, self.quit)  # 2초 후 종료
+                    else:
+                        self.update_status("업데이트 실패", "GitHub에서 파일을 다운로드할 수 없습니다.")
             else:
-                messagebox.showinfo("업데이트 확인", 
-                                  f"현재 최신 버전을 사용 중입니다.\n\n"
-                                  f"현재 버전: {self.update_manager.current_version}\n"
-                                  f"GitHub 버전: {latest_version}")
-                self.quit()
+                self.update_status(
+                    "현재 최신 버전입니다.",
+                    f"현재 버전: {self.update_manager.current_version}\n"
+                    f"최신 버전: {latest_version}"
+                )
         except Exception as e:
-            messagebox.showerror("오류", f"업데이트 확인 중 오류가 발생했습니다.\n\n{str(e)}")
-            self.quit()
+            self.update_status(
+                "업데이트 확인 실패",
+                f"오류: {str(e)}"
+            )
 
-if __name__ == "__main__":
+def run_updater():
+    """업데이트 앱을 실행하는 함수"""
     ctk.set_appearance_mode("dark")
     app = UpdaterApp()
-    app.mainloop() 
+    app.mainloop()
+
+if __name__ == "__main__":
+    run_updater() 

@@ -46,7 +46,7 @@ class MESDownloader(ctk.CTk):
     def load_config(self):
         """설정 파일 로드"""
         default_config = {
-            "version": "2.1.0",  # 버전 정보 추가
+            "version": UpdateManager.current_version,  # 버전 정보를 UpdateManager에서 가져옴
             "line_types": ["[01] 제어기"],
             "lines": {
                 "[01] 제어기": [
@@ -543,6 +543,14 @@ class MESDownloader(ctk.CTk):
                                        font=("맑은 고딕", 14, "bold"))
         update_check_btn.pack(side="left", padx=5)
         
+        # 비가동관리 버튼
+        dt_history_btn = ctk.CTkButton(button_frame, text="비가동관리",
+                                      command=self.open_dt_history,
+                                      height=40, width=150,
+                                      font=("맑은 고딕", 14, "bold"),
+                                      fg_color="green", hover_color="darkgreen")
+        dt_history_btn.pack(side="left", padx=5)
+        
         # 만든이 정보 프레임
         info_frame = ctk.CTkFrame(settings_window)
         info_frame.pack(pady=10, padx=20, fill="x")
@@ -558,7 +566,7 @@ class MESDownloader(ctk.CTk):
         creator_label.pack(pady=(5,0))
         
         version_label = ctk.CTkLabel(info_frame,
-                                   text="충주 제어기 생산팀 / Version 2.1.3",
+                                   text=f"충주 제어기 생산팀 / Version {UpdateManager.current_version}",
                                    font=("맑은 고딕", 12))
         version_label.pack()
         
@@ -1083,14 +1091,20 @@ class MESDownloader(ctk.CTk):
         app = SplitMode(self)
         app.grab_set()
 
+    def open_dt_history(self):
+        """비가동관리 창 열기"""
+        try:
+            from mes_DTHistory import DTHistory
+            app = DTHistory(self)
+            app.grab_set()
+        except Exception as e:
+            messagebox.showerror("오류", f"비가동관리 모듈 실행 중 오류가 발생했습니다.\n\n{str(e)}")
+
     def check_update_manually(self):
         """업데이트 확인 수동 실행"""
         try:
-            updater_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mes_updater.py")
-            if os.path.exists(updater_path):
-                os.system(f'python "{updater_path}"')
-            else:
-                messagebox.showerror("오류", "업데이트 모듈을 찾을 수 없습니다.")
+            from mes_updater import run_updater
+            run_updater()
         except Exception as e:
             messagebox.showerror("오류", f"업데이트 모듈 실행 중 오류가 발생했습니다.\n\n{str(e)}")
 
